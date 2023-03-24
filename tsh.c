@@ -36,6 +36,7 @@ static void cmdexec(char *cmd)
      * 명령어 앞부분 공백문자를 제거하고 인자를 하나씩 꺼내서 argv에 차례로 저장한다.
      * 작은 따옴표나 큰 따옴표로 이루어진 문자열을 하나의 인자로 처리한다.
      */
+    
     p = cmd; p += strspn(p, " \t");
     q = strpbrk(p,"|");
     if(q == NULL){
@@ -60,26 +61,25 @@ static void cmdexec(char *cmd)
              2023.03.21 이 경우에 표준 입출력을 담겼을 때 argc을 기다려서 해당 인덱싱 null 초기화 or T/F값으로 중간에 break하는걸로
              */
             else if (*q == '<'){
-                int is_only_alpha = 1;
-
                 q = strsep(&p, "<");
-
                 if (*q) argv[argc++] = q;
                 p += strspn(p, " \t");
-                q=p;
-                while (*q != '\0') {
-                  if (!isalpha(*q)) {
-                    is_only_alpha = 0;
-                    break;
-                  }
-                  q++;
+                
+                /* 남은 문자열(p)에 공백이 있는지 없는지 for문으로 판별*/
+                int i;
+                // https://blockdmask.tistory.com/449
+                for(i = 0 ; i < strlen(p) ; i++){
+                    if(isspace(p[i])!=0) {
+                        i=-1;
+                        break;
+                    }
                 }
-                if(!(is_only_alpha)){ //공백이 더 있음
+                if(i<0){ //공백이 더 있음
                     q = strsep(&p, " ");
                     input_file = q;
                     if (*q) argv[argc++] = q;
                 }
-                else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
+                else{ //아무것도 없을 경우
                     input_file = p;
                     break;
                 }
@@ -93,25 +93,25 @@ static void cmdexec(char *cmd)
              2023.03.19 (해결) p += strspn(p, " \t");으로 앞 공백을 없애고 p포인터를 옮겨준다._ 예범
              */
             else if (*q == '>'){
-                int is_only_alpha = 1;
                 q = strsep(&p, ">");
                 if (*q) argv[argc++] = q;
                 p += strspn(p, " \t");
-                q=p;
-                while (*q != '\0') {
-                  if (!isalpha(*q)) {
-                    is_only_alpha = 0;
-                    break;
-                  }
-                  q++;
+
+                /* 남은 문자열(p)에 공백이 있는지 없는지 for문으로 판별*/
+                int i;
+                /* https://blockdmask.tistory.com/449 */
+                for(i = 0 ; i < strlen(p) ; i++){
+                    if(isspace(p[i])!=0) {
+                        i=-1;
+                        break;
+                    }
                 }
-                if(!(is_only_alpha)){ //공백이 더 있음
+                if(i<0){ //공백이 더 있음
                     q = strsep(&p, " ");
                     output_file = q;
                     if (*q) argv[argc++] = q;
                 }
-                else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
-                    fprintf(stderr,"%s",p);
+                else{ //아무것도 없을 경우
                     output_file = p;
                     break;
                 }
@@ -169,9 +169,8 @@ static void cmdexec(char *cmd)
         }
         
         argv[argc] = NULL;
-        for(int i=0;i<argc;i++){
-            fprintf(stderr,"%s  %d\n",argv[i],argc);
-        }
+        
+        
         if (argc > 0){
             execvp(argv[0], argv);
         }
