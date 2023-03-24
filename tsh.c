@@ -75,13 +75,11 @@ static void cmdexec(char *cmd)
                   q++;
                 }
                 if(!(is_only_alpha)){ //공백이 더 있음
-
                     q = strsep(&p, " ");
                     input_file = q;
                     if (*q) argv[argc++] = q;
                 }
                 else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
-                    
                     input_file = p;
                     break;
                 }
@@ -96,9 +94,7 @@ static void cmdexec(char *cmd)
              */
             else if (*q == '>'){
                 int is_only_alpha = 1;
-
                 q = strsep(&p, ">");
-
                 if (*q) argv[argc++] = q;
                 p += strspn(p, " \t");
                 q=p;
@@ -110,13 +106,12 @@ static void cmdexec(char *cmd)
                   q++;
                 }
                 if(!(is_only_alpha)){ //공백이 더 있음
-
                     q = strsep(&p, " ");
                     output_file = q;
                     if (*q) argv[argc++] = q;
                 }
                 else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
-                    
+                    fprintf(stderr,"%s",p);
                     output_file = p;
                     break;
                 }
@@ -174,6 +169,9 @@ static void cmdexec(char *cmd)
         }
         
         argv[argc] = NULL;
+        for(int i=0;i<argc;i++){
+            fprintf(stderr,"%s  %d\n",argv[i],argc);
+        }
         if (argc > 0){
             execvp(argv[0], argv);
         }
@@ -205,13 +203,12 @@ static void cmdexec(char *cmd)
             //exit(EXIT_SUCCESS);
         }
         else if(pid > 0){ // 부모 프로세스
-            wait(NULL);
-
             close(fd[1]);
             /* 표준 입력을 파이프 연결로 바꿈*/
             dup2(fd[0],STDIN_FILENO);
             /* 부모프로세스는 받아야하므로 write을 닫음(출력을 닫음)*/
             close(fd[0]);
+            wait(NULL);
             /* 자식 먼저 명령 실행해야함. 그래서 부모 기다림*/
             /* 배열로 자식프로세스에서 실행한만큼 초기화 */
             memset(argv, 0, sizeof(argv));
