@@ -12,6 +12,8 @@
 #include <strings.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <ctype.h>
+
 
 #define MAX_LINE 80             /* 명령어의 최대 길이 */
 
@@ -26,157 +28,199 @@ static void cmdexec(char *cmd)
 {
     char *argv[MAX_LINE/2+1];   /* 명령어 인자를 저장하기 위한 배열 */
     int argc = 0;               /* 인자의 개수 */
-    char *p, *q;                /* 명령어를 파싱하기 위한 변수 */
+    char *p, *q,*r;                /* 명령어를 파싱하기 위한 변수 */
     char *input_file = NULL;
     char *output_file = NULL;
-    /*
-    if(q = strpbrk(p,"|")){
-        q = strsep(&p, "|");
-        
-    }*/
+    
     /*
      * 명령어 앞부분 공백문자를 제거하고 인자를 하나씩 꺼내서 argv에 차례로 저장한다.
      * 작은 따옴표나 큰 따옴표로 이루어진 문자열을 하나의 인자로 처리한다.
      */
     p = cmd; p += strspn(p, " \t");
-    do {
-        /*
-         * 공백문자, 큰 따옴표, 작은 따옴표가 있는지 검사한다.
-         */
-        q = strpbrk(p, " \t\'\"<>|");//p가 str2에 해당하는 값이 없으면 q에 null배정_예범 https://www.ibm.com/docs/ko/i/7.3?topic=functions-strpbrk-find-characters-in-string
-        /*
-         * 공백문자가 있거나 아무 것도 없으면 공백문자까지 또는 전체를 하나의 인자로 처리한다.
-         */
-        if (q == NULL || *q == ' ' || *q == '\t') {
-            q = strsep(&p, " \t");
-            if (*q) argv[argc++] = q;
-        }
-        else if (*q == '|'){
-            q = strsep(&p, "|");
+    q = strpbrk(p,"|");
+    if(q == NULL){
+        do {
+            /*
+             * 공백문자, 큰 따옴표, 작은 따옴표가 있는지 검사한다.
+             */
+            q = strpbrk(p, " \t\'\"<>|");//p가 str2에 해당하는 값이 없으면 q에 null배정_예범 https://www.ibm.com/docs/ko/i/7.3?topic=functions-strpbrk-find-characters-in-string
+            /*
+             * 공백문자가 있거나 아무 것도 없으면 공백문자까지 또는 전체를 하나의 인자로 처리한다.
+             */
+            if (q == NULL || *q == ' ' || *q == '\t') {
+                q = strsep(&p, " \t");
+                if (*q) argv[argc++] = q;
+            }
+            /*
+             < 문자가 있는 경우
+             입력을 표준 장치인 키보드에서 읽어 오지 않고 파일에서 읽어 온다.
+             < 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을
+             open에 넣어서 파일에서 읽어옴 _ 예범
+             2023.03.19 파일 이름이 argv에 담기는 오류 발생.
+             2023.03.21 이 경우에 표준 입출력을 담겼을 때 argc을 기다려서 해당 인덱싱 null 초기화 or T/F값으로 중간에 break하는걸로
+             */
+            else if (*q == '<'){
+                int is_only_alpha = 1;
 
-            int fd[2];
-            pid_t pid;
+                q = strsep(&p, "<");
 
-            if(pipe(fd) == -1 ){
-                fprintf(stderr,"Pipe failed");
+                if (*q) argv[argc++] = q;
+                p += strspn(p, " \t");
+                q=p;
+                while (*q != '\0') {
+                  if (!isalpha(*q)) {
+                    is_only_alpha = 0;
+                    break;
+                  }
+                  q++;
+                }
+                if(!(is_only_alpha)){ //공백이 더 있음
+
+                    q = strsep(&p, " ");
+                    input_file = q;
+                    if (*q) argv[argc++] = q;
+                }
+                else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
+                    
+                    input_file = p;
+                    break;
+                }
+            }
+            /*
+             > 문자가 있는 경우
+             출력을 표준장치인 화면으로 보내지 않고 파일에 저장한다
+             > 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을 open에 넣어서 파일에서 읽어옴
+             
+             2023.02.18 p앞에 공백이 존재하는 경우 파일이 공백과 함께 저장된다.
+             2023.03.19 (해결) p += strspn(p, " \t");으로 앞 공백을 없애고 p포인터를 옮겨준다._ 예범
+             */
+            else if (*q == '>'){
+                int is_only_alpha = 1;
+
+                q = strsep(&p, ">");
+
+                if (*q) argv[argc++] = q;
+                p += strspn(p, " \t");
+                q=p;
+                while (*q != '\0') {
+                  if (!isalpha(*q)) {
+                    is_only_alpha = 0;
+                    break;
+                  }
+                  q++;
+                }
+                if(!(is_only_alpha)){ //공백이 더 있음
+
+                    q = strsep(&p, " ");
+                    output_file = q;
+                    if (*q) argv[argc++] = q;
+                }
+                else if(is_only_alpha){ //알파벳만 이루어져있음 = 공백 없음
+                    
+                    output_file = p;
+                    break;
+                }
+            }
+            /*
+             * 작은 따옴표가 있으면 그 위치까지 하나의 인자로 처리하고,
+             * 작은 따옴표 위치에서 두 번째 작은 따옴표 위치까지 다음 인자로 처리한다.
+             * 두 번째 작은 따옴표가 없으면 나머지 전체를 인자로 처리한다.
+             */
+            else if (*q == '\'') {
+                q = strsep(&p, "\'");
+                if (*q) argv[argc++] = q;
+                q = strsep(&p, "\'");
+                if (*q) argv[argc++] = q;
+            }
+            /*
+             * 큰 따옴표가 있으면 그 위치까지 하나의 인자로 처리하고,
+             * 큰 따옴표 위치에서 두 번째 큰 따옴표 위치까지 다음 인자로 처리한다.
+             * 두 번째 큰 따옴표가 없으면 나머지 전체를 인자로 처리한다.
+             */
+            else {
+                q = strsep(&p, "\"");
+                if (*q) argv[argc++] = q;
+                q = strsep(&p, "\"");
+                if (*q) argv[argc++] = q;
+            }
+        } while (p); //p가 null일 경우에 종료_예범
+        
+        if (input_file != NULL) {
+            int input_fd = open(input_file, O_RDONLY);
+            if (input_fd == -1) {       // 파일을 오픈하는데 실패함
+                perror("open");
                 exit(EXIT_FAILURE);
             }
-                        
-            if((pid=fork()) < 0){
-                fprintf(stderr, "Fork Failed");
+            if(dup2(input_fd,STDIN_FILENO) == 1){
+                perror("input_dup2_error");
                 exit(EXIT_FAILURE);
             }
-            else if(pid == 0){ // 자식 프로세스
-                /* 자식 프로세스는 보내야하므로 read을 닫음(입력을 닫음)*/
-                close(fd[0]);
-                /* 표준 출력을 파이프 연결로 바꿈*/
-                dup2(fd[1],STDOUT_FILENO);
-                close(fd[1]);
-                /* 파이프 전 명령들 실행 -> 파이프 입력쪽으로 보냄 *********/
-                break;
-                //exit(EXIT_SUCCESS);
+            close(input_fd);
+        }
+        /*
+            출력파일을 표준 출력으로 리다이렉션함
+        */
+        if (output_file != NULL) {
+            int output_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);  // 출력 파일 오픈
+            if (output_fd == -1) {     // 출력 파일을 오픈하는데 실패함
+                perror("open");
+                exit(EXIT_FAILURE);
             }
-            else if(pid > 0){ // 부모 프로세스
-                wait(NULL);
+            if(dup2(output_fd,STDOUT_FILENO) == -1){
+                perror("output_dup2_error");
+                exit(EXIT_FAILURE);
+            };
+            close(output_fd);
+        }
+        
+        argv[argc] = NULL;
+        if (argc > 0){
+            execvp(argv[0], argv);
+        }
+    }
+    else if(*q == '|'){
+        q = strsep(&p, "|");
 
-                close(fd[1]);
-                /* 표준 입력을 파이프 연결로 바꿈*/
-                dup2(fd[0],STDIN_FILENO);
-                /* 부모프로세스는 받아야하므로 write을 닫음(출력을 닫음)*/
-                close(fd[0]);
-                /* 자식 먼저 명령 실행해야함. 그래서 부모 기다림*/
+        int fd[2];
+        pid_t pid;
 
-                /* 배열로 자식프로세스에서 실행한만큼 초기화 */
-                memset(argv, 0, sizeof(argv));
-                argc = 0;
-            }
-        }
-        /*
-         < 문자가 있는 경우
-         입력을 표준 장치인 키보드에서 읽어 오지 않고 파일에서 읽어 온다.
-         < 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을
-         open에 넣어서 파일에서 읽어옴 _ 예범
-         2023.03.19 파일 이름이 argv에 담기는 오류 발생.
-         2023.03.21 이 경우에 표준 입출력을 담겼을 때 argc을 기다려서 해당 인덱싱 null초기화 or TF값으로 중간에 break하는걸로
-         */
-        else if (*q == '<'){
-            q = strsep(&p, "<");
-            if (*q) argv[argc++] = q;
-            p += strspn(p, " \t");
-            input_file = p;
-        }
-        /*
-         > 문자가 있는 경우
-         출력을 표준장치인 화면으로 보내지 않고 파일에 저장한다
-         > 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을 open에 넣어서 파일에서 읽어옴
-         
-         2023.02.18 p앞에 공백이 존재하는 경우 파일이 공백과 함께 저장된다.
-         2023.03.19 (해결) p += strspn(p, " \t");으로 앞 공백을 없애고 p포인터를 옮겨준다._ 예범
-         */
-        else if (*q == '>'){
-            q = strsep(&p, ">");
-            if (*q) argv[argc++] = q;
-            p += strspn(p, " \t");
-            output_file = p;
-            break;
-        }
-        /*
-         * 작은 따옴표가 있으면 그 위치까지 하나의 인자로 처리하고,
-         * 작은 따옴표 위치에서 두 번째 작은 따옴표 위치까지 다음 인자로 처리한다.
-         * 두 번째 작은 따옴표가 없으면 나머지 전체를 인자로 처리한다.
-         */
-        else if (*q == '\'') {
-            q = strsep(&p, "\'");
-            if (*q) argv[argc++] = q;
-            q = strsep(&p, "\'");
-            if (*q) argv[argc++] = q;
-        }
-        /*
-         * 큰 따옴표가 있으면 그 위치까지 하나의 인자로 처리하고,
-         * 큰 따옴표 위치에서 두 번째 큰 따옴표 위치까지 다음 인자로 처리한다.
-         * 두 번째 큰 따옴표가 없으면 나머지 전체를 인자로 처리한다.
-         */
-        else {
-            q = strsep(&p, "\"");
-            if (*q) argv[argc++] = q;
-            q = strsep(&p, "\"");
-            if (*q) argv[argc++] = q;
-        }
-    } while (p); //p가 null일 경우에 종료_예범
-    
-    
-    if (input_file != NULL) {                           //
-        int input_fd = open(input_file, O_RDONLY);
-        if (input_fd == -1) {       // 파일을 오픈하는데 실패함
-            perror("open");
+        if(pipe(fd) == -1 ){
+            fprintf(stderr,"Pipe failed");
             exit(EXIT_FAILURE);
         }
-        if(dup2(input_fd,STDIN_FILENO) == 1){
-            perror("input_dup2_error");
+                    
+        if((pid=fork()) < 0){
+            fprintf(stderr, "Fork Failed");
             exit(EXIT_FAILURE);
         }
-        close(input_fd);
+        else if(pid == 0){ // 자식 프로세스
+            /* 자식 프로세스는 보내야하므로 read을 닫음(입력을 닫음)*/
+            close(fd[0]);
+            /* 표준 출력을 파이프 연결로 바꿈*/
+            dup2(fd[1],STDOUT_FILENO);
+            close(fd[1]);
+            /* 파이프 전 명령들 실행 -> 파이프 입력쪽으로 보냄 *********/
+            cmdexec(q);
+            //break;
+            //exit(EXIT_SUCCESS);
+        }
+        else if(pid > 0){ // 부모 프로세스
+            wait(NULL);
+
+            close(fd[1]);
+            /* 표준 입력을 파이프 연결로 바꿈*/
+            dup2(fd[0],STDIN_FILENO);
+            /* 부모프로세스는 받아야하므로 write을 닫음(출력을 닫음)*/
+            close(fd[0]);
+            /* 자식 먼저 명령 실행해야함. 그래서 부모 기다림*/
+            /* 배열로 자식프로세스에서 실행한만큼 초기화 */
+            memset(argv, 0, sizeof(argv));
+            argc = 0;
+            cmdexec(p);
+
+        }
     }
-    /*
-        출력파일을 표준 출력으로 리다이렉션함
-    */
-    if (output_file != NULL) {
-        int output_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);  // 출력 파일 오픈
-        if (output_fd == -1) {     // 출력 파일을 오픈하는데 실패함
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
-        if(dup2(output_fd,STDOUT_FILENO) == -1){
-            perror("output_dup2_error");
-            exit(EXIT_FAILURE);
-        };
-        close(output_fd);
-    }
-    
-    argv[argc] = NULL;
-    if (argc > 0){
-        execvp(argv[0], argv);
-    }
+
 }
 
 /*
