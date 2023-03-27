@@ -3,6 +3,10 @@
  * 이 프로그램은 한양대학교 ERICA 컴퓨터학부 학생을 위한 교육용으로 제작되었다.
  * 한양대학교 ERICA 학생이 아닌 이는 프로그램을 수정하거나 배포할 수 없다.
  * 프로그램을 수정할 경우 날짜, 학과, 학번, 이름, 수정 내용을 기록한다.
+ * 2023.03.20-21 / 컴퓨터학부 / 2019096699 / 이예범 / 리다이렉션 기능 추가
+ * 2023.03.23    / 컴퓨터학부 / 2019096699 / 이예범 / 파이프, 다중파이프 기능 추가
+ * 2023.03.24    / 컴퓨터학부 / 2019096699 / 이예범 / 리다이렉션 기능 수정, 조합 기능 추가
+ * 2023.03.27    / 컴퓨터학부 / 2019096699 / 이예범 / 최종 주석 추가
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,23 +32,29 @@ static void cmdexec(char *cmd)
 {
     char *argv[MAX_LINE/2+1];   /* 명령어 인자를 저장하기 위한 배열 */
     int argc = 0;               /* 인자의 개수 */
-    char *p, *q,*r;                /* 명령어를 파싱하기 위한 변수 */
-    char *input_file = NULL;
-    char *output_file = NULL;
-    
+    char *p, *q;                /* 명령어를 파싱하기 위한 변수 */
+    char *input_file = NULL;    /* 표준 입력 리다이렉션에 사용하는 변수 ( 표준 입력 -> input_file )*/
+    char *output_file = NULL;   /* 표준 출력 리다이렉션에 사용하는 변수 ( 표준 출력 -> output_file )*/
     /*
-     * 명령어 앞부분 공백문자를 제거하고 인자를 하나씩 꺼내서 argv에 차례로 저장한다.
-     * 작은 따옴표나 큰 따옴표로 이루어진 문자열을 하나의 인자로 처리한다.
+     * 먼저, cmdexec은 뉴 기본기능 (기본기능 + 리다이렉션) 과 파이프기능 두 개로 나뉘어져 있음
+     * Chap 1 : 명령어 앞부분 공백문자를 제거하고 명령어에 '|' 문자가 존재여부 확인
+     * '|' 문자가 존재하지 않을 경우 기본 기능 ( + 리다이렉션 기능) 수행
+     * '|' 문자가 존재할 경우 else if(*q == '|')으로 이동 후 파이프 기능 수행
      */
-    
     p = cmd; p += strspn(p, " \t");
+    /*
+     p에 '|'문자 존재여부 확인 ->  존재하면 q에 해당포인터 할당 / 존재하지 않으면 Null값 배정
+     * strpbrk 함수 설명 : p가 str2에 해당하는 값이 없으면 q에 null배정_예범
+     * 출처 : https://www.ibm.com/docs/ko/i/7.3?topic=functions-strpbrk-find-characters-in-string
+     */
     q = strpbrk(p,"|");
+    /* '|' 문자가 존재하지 않을 경우 기본 기능 (+ 리다이렉션 기능) 수행*/
     if(q == NULL){
         do {
             /*
-             * 공백문자, 큰 따옴표, 작은 따옴표가 있는지 검사한다.
+             * 공백문자, 큰 따옴표, 작은 따옴표, <> 문자가 있는지 검사한다.
              */
-            q = strpbrk(p, " \t\'\"<>|");//p가 str2에 해당하는 값이 없으면 q에 null배정_예범 https://www.ibm.com/docs/ko/i/7.3?topic=functions-strpbrk-find-characters-in-string
+            q = strpbrk(p, " \t\'\"<>");
             /*
              * 공백문자가 있거나 아무 것도 없으면 공백문자까지 또는 전체를 하나의 인자로 처리한다.
              */
@@ -53,66 +63,71 @@ static void cmdexec(char *cmd)
                 if (*q) argv[argc++] = q;
             }
             /*
-             < 문자가 있는 경우
-             입력을 표준 장치인 키보드에서 읽어 오지 않고 파일에서 읽어 온다.
-             < 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을
-             open에 넣어서 파일에서 읽어옴 _ 예범
-             2023.03.19 파일 이름이 argv에 담기는 오류 발생.
-             2023.03.21 이 경우에 표준 입출력을 담겼을 때 argc을 기다려서 해당 인덱싱 null 초기화 or T/F값으로 중간에 break하는걸로
+             * < 문자가 있는 경우
+             * 입력을 표준 장치인 키보드에서 읽어 오지 않고 파일에서 읽어 온다.
+             * < 구분자로 p를 나눈 다음에 다음 공백까지 문자열을 p에 할당.
+             * 1) < 이후에 또 다른 명령어가 존재한다면 공백기준으로 자른다.
+             * 이전 문자열은 file이 되고 배열에 담긴다. 이후 while문 작동
+             * 2) < 이후 명령어 존재하지 않고 마지막일경우 p가 그대로 리다이렉션 file이 되고
+             * 이후 While문 안에서 argv 배열에 담긴다.
              */
             else if (*q == '<'){
                 q = strsep(&p, "<");
                 if (*q) argv[argc++] = q;
                 p += strspn(p, " \t");
-                
-                /* 남은 문자열(p)에 공백이 있는지 없는지 for문으로 판별*/
+                /*
+                 * 남은 문자열(p)의 *끝*에 공백이 있는지 없는지 for문으로 판별
+                 * isspace함수 : 공백이면 0이 아닌 수를 반환 / 출처 : https://blockdmask.tistory.com/449
+                 */
                 int i;
-                // https://blockdmask.tistory.com/449
                 for(i = 0 ; i < strlen(p) ; i++){
                     if(isspace(p[i])!=0) {
-                        i=-1;
-                        break;
+                        i=-1;                      // i로 공백인지 아닌지 판별
+                        break;                     // 공백이면 for문 종료
                     }
                 }
-                if(i<0){ //공백이 더 있음
-                    q = strsep(&p, " ");
-                    input_file = q;
-                    if (*q) argv[argc++] = q;
+                if(i < 0){                         // 공백이 있음
+                    q = strsep(&p, " ");           // 공백문자로 분할
+                    input_file = q;                // 나뉘어진 왼쪽 문자열 input_file에 할당
+                    if (*q) argv[argc++] = q;      // q 존재할경우 argv 배열에 담음
                 }
-                else{ //아무것도 없을 경우
-                    input_file = p;
+                else{                              // 공백 아무것도 없을 경우
+                    input_file = p;                // p input_file에 할당
                     break;
                 }
             }
             /*
-             > 문자가 있는 경우
-             출력을 표준장치인 화면으로 보내지 않고 파일에 저장한다
-             > 구분자로 p를 나눈다음에 그 전 문자열을 argv배열에 담고, p이름을 가진 파일을 open에 넣어서 파일에서 읽어옴
-             
-             2023.02.18 p앞에 공백이 존재하는 경우 파일이 공백과 함께 저장된다.
-             2023.03.19 (해결) p += strspn(p, " \t");으로 앞 공백을 없애고 p포인터를 옮겨준다._ 예범
+             * > 문자가 있는 경우
+             * 출력을 표준 장치로 출력하지 않고 파일로 출력한다.
+             * > 구분자로 p를 나눈 다음에 다음 공백까지 문자열을 p에 할당.
+             * 1) > 이후에 또 다른 명령어가 존재한다면 공백기준으로 자른다.
+             * 이전 문자열은 file이 되고 배열에 담긴다. 이후 while문 작동
+             * 2) < 이후 명령어 존재하지 않고 마지막일경우 p가 그대로 리다이렉션 file이 되고
+             * 이후 While문 안에서 argv 배열에 담긴다.
              */
             else if (*q == '>'){
                 q = strsep(&p, ">");
                 if (*q) argv[argc++] = q;
                 p += strspn(p, " \t");
 
-                /* 남은 문자열(p)에 공백이 있는지 없는지 for문으로 판별*/
+                /*
+                 * 남은 문자열(p)의 *끝*에 공백이 있는지 없는지 for문으로 판별
+                 * isspace함수 : 공백이면 0이 아닌 수를 반환 / 출처 : https://blockdmask.tistory.com/449
+                 */
                 int i;
-                /* https://blockdmask.tistory.com/449 */
                 for(i = 0 ; i < strlen(p) ; i++){
                     if(isspace(p[i])!=0) {
-                        i=-1;
-                        break;
+                        i=-1;                      // i로 공백인지 아닌지 판별
+                        break;                     // 공백이면 for문 종료
                     }
                 }
-                if(i<0){ //공백이 더 있음
-                    q = strsep(&p, " ");
-                    output_file = q;
-                    if (*q) argv[argc++] = q;
+                if(i<0){                           // 공백이 더 있음
+                    q = strsep(&p, " ");           // 공백문자로 분할
+                    output_file = q;               // 나뉘어진 왼쪽 문자열 output_file에 할당
+                    if (*q) argv[argc++] = q;      // q 존재할경우 argv 배열에 담음
                 }
-                else{ //아무것도 없을 경우
-                    output_file = p;
+                else{                              //아무것도 없을 경우
+                    output_file = p;               // p output_file에 할당
                     break;
                 }
             }
@@ -138,81 +153,86 @@ static void cmdexec(char *cmd)
                 q = strsep(&p, "\"");
                 if (*q) argv[argc++] = q;
             }
-        } while (p); //p가 null일 경우에 종료_예범
+        } while (p); // p가 null일 경우에 종료_예범
+        
+        /*
+         * 리다이렉션 할 파일이 존재한다면
+         * 입력 파일을 표준 입력으로 리다이렉션함
+         */
         
         if (input_file != NULL) {
-            int input_fd = open(input_file, O_RDONLY);
-            if (input_fd == -1) {       // 파일을 오픈하는데 실패함
-                perror("open");
+            int input_fd = open(input_file, O_RDONLY);  // 입력 파일 오픈
+            if (input_fd == -1) {                       // 파일을 오픈하는데 실패함
+                perror("input_open_error");
                 exit(EXIT_FAILURE);
             }
-            if(dup2(input_fd,STDIN_FILENO) == 1){
+            if(dup2(input_fd,STDIN_FILENO) == 1){       // 표준 출력 리다이렉션 실패
                 perror("input_dup2_error");
                 exit(EXIT_FAILURE);
             }
             close(input_fd);
         }
         /*
-            출력파일을 표준 출력으로 리다이렉션함
-        */
+         * 리다이렉션 할 파일이 존재한다면
+         * 출력 파일을 표준 출력으로 리다이렉션함
+         */
         if (output_file != NULL) {
             int output_fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);  // 출력 파일 오픈
-            if (output_fd == -1) {     // 출력 파일을 오픈하는데 실패함
-                perror("open");
+            if (output_fd == -1) {                                                  // 출력 파일을 오픈하는데 실패함
+                perror("output_open_error");
                 exit(EXIT_FAILURE);
             }
-            if(dup2(output_fd,STDOUT_FILENO) == -1){
+            if(dup2(output_fd,STDOUT_FILENO) == -1){                                // 표준 출력 리다이렉션 실패
                 perror("output_dup2_error");
                 exit(EXIT_FAILURE);
             };
             close(output_fd);
         }
         
+        /* 명령(argv)의 종료지점 설정 */
         argv[argc] = NULL;
         
-        
+        /* 명령 실행 */
         if (argc > 0){
             execvp(argv[0], argv);
         }
     }
+    /*
+     * '|' 문자가 존재할 경우 파이프 기능 수행
+     * 1) '|'을 기준으로 q, p로 나눔
+     * 2) fork을 통해 자식프로세스를 생성하여 q를 실행,
+     * 3) 부모는 자식프로세스가 종료될 때까지 wait한 후 p를 실행
+     * 4) p에 '|'가 없을 때 까지 재귀적으로 cmdexec(p)가 실행
+     */
     else if(*q == '|'){
         q = strsep(&p, "|");
 
         int fd[2];
         pid_t pid;
 
-        if(pipe(fd) == -1 ){
+        if(pipe(fd) == -1 ){                // 파이프 실패될 경우
             fprintf(stderr,"Pipe failed");
             exit(EXIT_FAILURE);
         }
                     
         if((pid=fork()) < 0){
-            fprintf(stderr, "Fork Failed");
+            fprintf(stderr, "Fork Failed"); // 포크 실패될 경우
             exit(EXIT_FAILURE);
         }
-        else if(pid == 0){ // 자식 프로세스
-            /* 자식 프로세스는 보내야하므로 read을 닫음(입력을 닫음)*/
-            close(fd[0]);
-            /* 표준 출력을 파이프 연결로 바꿈*/
-            dup2(fd[1],STDOUT_FILENO);
-            close(fd[1]);
-            /* 파이프 전 명령들 실행 -> 파이프 입력쪽으로 보냄 *********/
-            cmdexec(q);
-            //break;
-            //exit(EXIT_SUCCESS);
+        else if(pid == 0){                  // 자식 프로세스
+            close(fd[0]);                   // 자식 프로세스는 보내야하므로 read을 닫음(입력을 닫음)
+            dup2(fd[1],STDOUT_FILENO);      // 표준 출력을 파이프 연결로 바꿈
+            close(fd[1]);                   // 출력 파이프 닫음
+            cmdexec(q);                     // 파이프 전 명령들 실행  /  부모프로세스와 연결된 파이프로 보냄
         }
-        else if(pid > 0){ // 부모 프로세스
-            close(fd[1]);
-            /* 표준 입력을 파이프 연결로 바꿈*/
-            dup2(fd[0],STDIN_FILENO);
-            /* 부모프로세스는 받아야하므로 write을 닫음(출력을 닫음)*/
-            close(fd[0]);
-            wait(NULL);
-            /* 자식 먼저 명령 실행해야함. 그래서 부모 기다림*/
-            /* 배열로 자식프로세스에서 실행한만큼 초기화 */
-            memset(argv, 0, sizeof(argv));
-            argc = 0;
-            cmdexec(p);
+        else if(pid > 0){                   // 부모 프로세스
+            close(fd[1]);                   // 표준 입력을 파이프 연결로 바꿈
+            dup2(fd[0],STDIN_FILENO);       // 부모프로세스는 받아야하므로 write을 닫음(출력을 닫음)
+            close(fd[0]);                   // 입력 파이프 닫음
+            wait(NULL);                     // 자식 먼저 명령 실행해야함. 그래서 부모 기다림
+            memset(argv, 0, sizeof(argv));  // 부모프로세스 실행하기 전에 자식프로세스에서 실행한만큼 배열 초기화 중복 실행 위험 요소 제거
+            argc = 0;                       // 배열 개수 초기화
+            cmdexec(p);                     // 파이프 문자 이후 명령들 실행 / 자식과 연결된 상태이므로 출력값 이어받아서 실행
 
         }
     }
